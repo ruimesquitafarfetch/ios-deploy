@@ -32,12 +32,15 @@
     target create \"{disk_app}\"\n\
     script fruitstrap_device_app=\"{device_app}\"\n\
     script fruitstrap_connect_url=\"connect://127.0.0.1:{device_port}\"\n\
+    script fruitstrap_output_path=\"{output_path}\"\n\
+    script fruitstrap_error_path=\"{error_path}\"\n\
     target modules search-paths add {modules_search_paths_pairs}\n\
     command script import \"{python_file_path}\"\n\
     command script add -f {python_command}.connect_command connect\n\
     command script add -s asynchronous -f {python_command}.run_command run\n\
     command script add -s asynchronous -f {python_command}.autoexit_command autoexit\n\
     command script add -s asynchronous -f {python_command}.safequit_command safequit\n\
+    command script add -s asynchronous -f {python_command}.waitfor_command waitfor\n\
     connect\n\
 ")
 
@@ -55,6 +58,10 @@ const char* lldb_prep_noninteractive_justlaunch_cmds = "\
 const char* lldb_prep_noninteractive_cmds = "\
     run\n\
     autoexit\n\
+";
+
+const char* lldb_prep_autoquit_cms = "\
+    waitfor\n\
 ";
 
 /*
@@ -78,17 +85,21 @@ int AMDeviceGetInterfaceType(struct am_device *device);
 bool found_device = false, debug = false, verbose = false, unbuffered = false, nostart = false, detect_only = false, install = true, uninstall = false, no_wifi = false;
 bool command_only = false;
 char *command = NULL;
+const char* output_path = NULL;
+const char* error_path = NULL;
 char const*target_filename = NULL;
 char const*upload_pathname = NULL;
 char *bundle_id = NULL;
 bool interactive = true;
 bool justlaunch = false;
+bool timetolive = false;
 char *app_path = NULL;
 char *device_id = NULL;
 char *args = NULL;
 char *list_root = NULL;
 int _timeout = 0;
 int _detectDeadlockTimeout = 0;
+int _timetolive = 5;
 int port = 0;    // 0 means "dynamically assigned"
 CFStringRef last_path = NULL;
 service_conn_t gdbfd;
@@ -636,6 +647,10 @@ void write_lldb_prep_cmds(AMDeviceRef device, CFURLRef disk_app_url) {
     CFStringFindAndReplace(pmodule, CFSTR("{detect_deadlock_timeout}"), detect_deadlock_timeout_str, rangeLLDB, 0);
     rangeLLDB.length = CFStringGetLength(pmodule);
 
+    CFStringRef time_to_live_str = CFStringCreateWithFormat(NULL, NULL, CFSTR("%d"), _timetolive);
+    CFStringFindAndReplace(pmodule, CFSTR("{time_to_live}"), time_to_live_str, rangeLLDB, 0);
+    rangeLLDB.length = CFStringGetLength(pmodule);
+
     if (args) {
         CFStringRef cf_args = CFStringCreateWithCString(NULL, args, kCFStringEncodingUTF8);
         CFStringFindAndReplace(cmds, CFSTR("{args}"), cf_args, range, 0);
@@ -665,6 +680,21 @@ void write_lldb_prep_cmds(AMDeviceRef device, CFURLRef disk_app_url) {
 
     CFStringRef device_port = CFStringCreateWithFormat(NULL, NULL, CFSTR("%d"), port);
     CFStringFindAndReplace(cmds, CFSTR("{device_port}"), device_port, range, 0);
+    range.length = CFStringGetLength(cmds);
+
+    if (output_path) {
+        CFStringRef output_path_str = CFStringCreateWithFormat(NULL, NULL, CFSTR("%s"), output_path);
+        CFStringFindAndReplace(cmds, CFSTR("{output_path}"), output_path_str, range, 0);
+    } else {
+        CFStringFindAndReplace(cmds, CFSTR("{output_path}"), CFSTR(""), range, 0);
+    }
+    range.length = CFStringGetLength(cmds);
+    if (error_path) {
+        CFStringRef error_path_str = CFStringCreateWithFormat(NULL, NULL, CFSTR("%s"), error_path);
+        CFStringFindAndReplace(cmds, CFSTR("{error_path}"), error_path_str, range, 0);
+    } else {
+        CFStringFindAndReplace(cmds, CFSTR("{error_path}"), CFSTR(""), range, 0);
+    }
     range.length = CFStringGetLength(cmds);
 
     CFURLRef device_container_url = CFURLCreateCopyDeletingLastPathComponent(NULL, device_app_url);
@@ -714,7 +744,10 @@ void write_lldb_prep_cmds(AMDeviceRef device, CFURLRef disk_app_url) {
     {
         if (justlaunch)
           extra_cmds = lldb_prep_noninteractive_justlaunch_cmds;
-        else
+        else if (timetolive){
+            printf("time to live");
+            extra_cmds = lldb_prep_autoquit_cms;
+        }else
           extra_cmds = lldb_prep_noninteractive_cmds;
     }
     else if (nostart)
@@ -1708,33 +1741,36 @@ void timeout_callback(CFRunLoopTimerRef timer, void *info) {
 void usage(const char* app) {
     NSLog(
         @"Usage: %@ [OPTION]...\n"
-        @"  -d, --debug                  launch the app in lldb after installation\n"
-        @"  -i, --id <device_id>         the id of the device to connect to\n"
-        @"  -c, --detect                 only detect if the device is connected\n"
-        @"  -b, --bundle <bundle.app>    the path to the app bundle to be installed\n"
-        @"  -a, --args <args>            command line arguments to pass to the app when launching it\n"
-        @"  -t, --timeout <timeout>      number of seconds to wait for a device to be connected\n"
-        @"  -u, --unbuffered             don't buffer stdout\n"
-        @"  -n, --nostart                do not start the app when debugging\n"
-        @"  -I, --noninteractive         start in non interactive mode (quit when app crashes or exits)\n"
-        @"  -L, --justlaunch             just launch the app and exit lldb\n"
-        @"  -v, --verbose                enable verbose output\n"
-        @"  -m, --noinstall              directly start debugging without app install (-d not required)\n"
-        @"  -p, --port <number>          port used for device, default: dynamic\n"
-        @"  -r, --uninstall              uninstall the app before install (do not use with -m; app cache and data are cleared) \n"
-        @"  -9, --uninstall_only         uninstall the app ONLY. Use only with -1 <bundle_id> \n"
-        @"  -1, --bundle_id <bundle id>  specify bundle id for list and upload\n"
-        @"  -l, --list                   list files\n"
-        @"  -o, --upload <file>          upload file\n"
-        @"  -w, --download               download app tree\n"
-        @"  -2, --to <target pathname>   use together with up/download file/tree. specify target\n"
-        @"  -D, --mkdir <dir>            make directory on device\n"
-        @"  -R, --rm <path>              remove file or directory on device (directories must be empty)\n"
-        @"  -V, --version                print the executable version \n"
-        @"  -e, --exists                 check if the app with given bundle_id is installed or not \n"
-        @"  -B, --list_bundle_id         list bundle_id \n"
-        @"  -W, --no-wifi                ignore wifi devices\n"
-        @"  --detect_deadlocks <sec>     start printing backtraces for all threads periodically after specific amount of seconds\n",
+        @"  -d, --debug                     launch the app in lldb after installation\n"
+        @"  -i, --id <device_id>            the id of the device to connect to\n"
+        @"  -c, --detect                    only detect if the device is connected\n"
+        @"  -b, --bundle <bundle.app>       the path to the app bundle to be installed\n"
+        @"  -a, --args <args>               command line arguments to pass to the app when launching it\n"
+        @"  -t, --timeout <timeout>         number of seconds to wait for a device to be connected\n"
+        @"  -u, --unbuffered                don't buffer stdout\n"
+        @"  -n, --nostart                   do not start the app when debugging\n"
+        @"  -I, --noninteractive            start in non interactive mode (quit when app crashes or exits)\n"
+        @"  -L, --justlaunch                just launch the app and exit lldb\n"
+        @"  -T, --timetolive <timetolive>   just launch the app wait for some time and exit lldb\n"
+        @"  -v, --verbose                   enable verbose output\n"
+        @"  -m, --noinstall                 directly start debugging without app install (-d not required)\n"
+        @"  -p, --port <number>             port used for device, default: dynamic\n"
+        @"  -r, --uninstall                 uninstall the app before install (do not use with -m; app cache and data are cleared) \n"
+        @"  -9, --uninstall_only            uninstall the app ONLY. Use only with -1 <bundle_id> \n"
+        @"  -1, --bundle_id <bundle id>     specify bundle id for list and upload\n"
+        @"  -l, --list                      list files\n"
+        @"  -o, --upload <file>             upload file\n"
+        @"  -w, --download                  download app tree\n"
+        @"  -2, --to <target pathname>      use together with up/download file/tree. specify target\n"
+        @"  -D, --mkdir <dir>               make directory on device\n"
+        @"  -R, --rm <path>                 remove file or directory on device (directories must be empty)\n"
+        @"  -V, --version                   print the executable version \n"
+        @"  -e, --exists                    check if the app with given bundle_id is installed or not \n"
+        @"  -B, --list_bundle_id            list bundle_id \n"
+        @"  -W, --no-wifi                   ignore wifi devices\n"
+        @"  -O, --output <file>             write stdout to this file\n"
+        @"  -E, --error_output <file>       write stderr to this file\n"
+        @"  --detect_deadlocks <sec>        start printing backtraces for all threads periodically after specific amount of seconds\n",
         [NSString stringWithUTF8String:app]);
 }
 
@@ -1763,6 +1799,7 @@ int main(int argc, char *argv[]) {
         { "nostart", no_argument, NULL, 'n' },
         { "noninteractive", no_argument, NULL, 'I' },
         { "justlaunch", no_argument, NULL, 'L' },
+        { "timetolive", required_argument, NULL, 'T' },
         { "detect", no_argument, NULL, 'c' },
         { "version", no_argument, NULL, 'V' },
         { "noinstall", no_argument, NULL, 'm' },
@@ -1779,12 +1816,14 @@ int main(int argc, char *argv[]) {
         { "exists", no_argument, NULL, 'e'},
         { "list_bundle_id", no_argument, NULL, 'B'},
         { "no-wifi", no_argument, NULL, 'W'},
+        { "output", required_argument, NULL, 'O' },
+        { "error_output", required_argument, NULL, 'E' },
         { "detect_deadlocks", required_argument, NULL, 1000 },
         { NULL, 0, NULL, 0 },
     };
     int ch;
 
-    while ((ch = getopt_long(argc, argv, "VmcdvunrILeD:R:i:b:a:t:g:x:p:1:2:o:l::w::9::B::W", longopts, NULL)) != -1)
+    while ((ch = getopt_long(argc, argv, "VmcdvunrITLeD:R:i:b:a:t:g:x:p:1:2:o:l::w::9::B::WOE:", longopts, NULL)) != -1)
     {
         switch (ch) {
         case 'm':
@@ -1823,6 +1862,12 @@ int main(int argc, char *argv[]) {
             interactive = false;
             justlaunch = true;
             debug = 1;
+            break;
+        case 'T':
+            timetolive = true;
+            interactive = false;
+            debug = true;
+            _timetolive = atoi(optarg);
             break;
         case 'c':
             detect_only = true;
@@ -1882,6 +1927,12 @@ int main(int argc, char *argv[]) {
             break;
         case 'W':
             no_wifi = true;
+            break;
+        case 'O':
+            output_path = optarg;
+            break;
+        case 'E':
+            error_path = optarg;
             break;
         case 1000:
             _detectDeadlockTimeout = atoi(optarg);

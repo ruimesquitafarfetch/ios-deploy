@@ -217,7 +217,6 @@ def autoexit_command(debugger, command, result, internal_dict):
     def ProcessSTDOUT():
         stdout = process.GetSTDOUT(1024)
         while stdout:
-            print(stdout)
             if out:
                 out.write(stdout)
             else:

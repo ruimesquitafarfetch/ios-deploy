@@ -14,11 +14,11 @@ Install and debug iOS apps without using Xcode. Designed to work on un-jailbroke
 
 See our [milestones](https://github.com/phonegap/ios-deploy/milestones).
 
-Significant changes: 
+Significant changes:
 
     1.8.0 will use an Xcode project instead of a Makefile (to prepare for 2.0.0) (1.x branch)
     2.0.0 will break out the commands into their own files, and create ios-deploy-lib for node.js use (master branch)
-	
+
 ## Development
 
 The legacy `1.x` version is under the `1.x` branch. Bug fixes for the `1.x` series will occur under there.
@@ -66,33 +66,35 @@ If you are *not* using a node version manager like [nvm](https://github.com/crea
 ## Usage
 
     Usage: ios-deploy [OPTION]...
-        -d, --debug                  launch the app in lldb after installation
-        -i, --id <device_id>         the id of the device to connect to
-        -c, --detect                 only detect if the device is connected
-        -b, --bundle <bundle.app>    the path to the app bundle to be installed
-        -a, --args <args>            command line arguments to pass to the app when launching it
-        -t, --timeout <timeout>      number of seconds to wait for a device to be connected
-        -u, --unbuffered             don't buffer stdout
-        -n, --nostart                do not start the app when debugging
-        -I, --noninteractive         start in non interactive mode (quit when app crashes or exits)
-        -L, --justlaunch             just launch the app and exit lldb
-        -v, --verbose                enable verbose output
-        -m, --noinstall              directly start debugging without app install (-d not required)
-        -p, --port <number>          port used for device, default: dynamic
-        -r, --uninstall              uninstall the app before install (do not use with -m; app cache and data are cleared) 
-        -9, --uninstall_only         uninstall the app ONLY. Use only with -1 <bundle_id> 
-        -1, --bundle_id <bundle id>  specify bundle id for list and upload
-        -l, --list                   list files
-        -o, --upload <file>          upload file
-        -w, --download               download app tree
-        -2, --to <target pathname>   use together with up/download file/tree. specify target
-        -D, --mkdir <dir>            make directory on device
-        -R, --rm <path>              remove file or directory on device (directories must be empty)
-        -V, --version                print the executable version 
-        -e, --exists                 check if the app with given bundle_id is installed or not 
-        -B, --list_bundle_id         list bundle_id 
-        -W, --no-wifi                ignore wifi devices
-        --detect_deadlocks <sec>     start printing backtraces for all threads periodically after specific amount of seconds
+        -d, --debug                     launch the app in lldb after installation
+        -i, --id <device_id>            the id of the device to connect to
+        -c, --detect                    only detect if the device is connected
+        -b, --bundle <bundle.app>       the path to the app bundle to be installed
+        -a, --args <args>               command line arguments to pass to the app when launching it
+        -t, --timeout <timeout>         number of seconds to wait for a device to be connected
+        -u, --unbuffered                don't buffer stdout
+        -n, --nostart                   do not start the app when debugging
+        -I, --noninteractive            start in non interactive mode (quit when app crashes or exits)
+        -L, --justlaunch                just launch the app and exit lldb
+        -T, --timetolive <timetolive>   just launch the app and exit after 5 seconds
+        -v, --verbose                   enable verbose output
+        -m, --noinstall                 directly start debugging without app install (-d not required)
+        -p, --port <number>             port used for device, default: dynamic
+        -r, --uninstall                 uninstall the app before install (do not use with -m; app cache and data are cleared)
+        -9, --uninstall_only            uninstall the app ONLY. Use only with -1 <bundle_id>
+        -1, --bundle_id <bundle id>     specify bundle id for list and upload
+        -l, --list                      list files
+        -o, --upload <file>             upload file
+        -w, --download                  download app tree
+        -2, --to <target pathname>      use together with up/download file/tree. specify target
+        -D, --mkdir <dir>               make directory on device
+        -R, --rm <path>                 remove file or directory on device (directories must be empty)
+        -V, --version                   print the executable version
+        -e, --exists                    check if the app with given bundle_id is installed or not
+        -B, --list_bundle_id            list bundle_id
+        -W, --no-wifi                   ignore wifi devices
+        -O, --output <file>             write stdout and stderr to this file
+        --detect_deadlocks <sec>        start printing backtraces for all threads periodically after specific amount of seconds
 
 ## Examples
 
@@ -127,15 +129,18 @@ The commands below assume that you have an app called `my.app` with bundle id `b
 
     // Download the Documents directory of the app *only*
     ios-deploy --download=/Documents --bundle_id my.app.id --to ./my_download_location
-    
+
     // List ids and names of connected devices
     ios-deploy -c
-    
+
     // Uninstall an app
     ios-deploy --uninstall_only --bundle_id my.bundle.id
-    
+
     // list all bundle ids of all apps on your device
     ios-deploy --list_bundle_id
+
+    // Exit app after a given time
+    ios-deploy --timetolive 10 --bundle my.app
 
 ## Demo
 

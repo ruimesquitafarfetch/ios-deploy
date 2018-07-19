@@ -130,6 +130,9 @@ def setupOutput(debugger, command, result, internal_dict):
     detectDeadlockTimeout = {detect_deadlock_timeout}
     printBacktraceTime = time.time() + detectDeadlockTimeout if detectDeadlockTimeout > 0 else None
 
+    # This line prevents internal lldb listener from processing STDOUT/STDERR messages. Without it, an order of log writes is incorrect sometimes
+    debugger.GetListener().StopListeningForEvents(process.GetBroadcaster(), lldb.SBProcess.eBroadcastBitSTDOUT | lldb.SBProcess.eBroadcastBitSTDERR )
+
     output_path = internal_dict['fruitstrap_output_path']
 
     out = None
@@ -154,6 +157,14 @@ def setupOutput(debugger, command, result, internal_dict):
             else:
                 sys.stdout.write(stdout)
             stdout = process.GetSTDOUT(1024)
+
+        stderr = process.GetSTDERR(1024)
+        while stderr:
+            if out:
+                out.write(stderr)
+            else:
+                sys.stderr.write(stderr)
+            stderr = process.GetSTDERR(1024)
         state = process.GetState()
 
     if state == lldb.eStateExited:

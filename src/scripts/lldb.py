@@ -65,7 +65,7 @@ def run_command(debugger, command, result, internal_dict):
     #This env variable makes NSLog, CFLog and os_log messages get mirrored to stderr
     #https://stackoverflow.com/a/39581193
     launchInfo.SetEnvironmentEntries(['OS_ACTIVITY_DT_MODE=enable'], True)
-    launchInfo.SetEnvironmentEntries(['DYLD_PRINT_STATISTICS_DETAILS=1'], True)
+    launchInfo.SetEnvironmentEntries(['DYLD_PRINT_STATISTICS=1'], True)
     launchInfo.SetEnvironmentEntries(['DYLD_PRINT_TO_STDERR=YES'], True)
 
     lldb.target.Launch(launchInfo, error)

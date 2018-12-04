@@ -9,11 +9,13 @@ listener = None
 
 class RunInBackground(object):
     def __init__(self, timetolive=5):
+        import time
         self.timetolive = timetolive
         self.start_time = time.time()
 
     @property
     def canContinue(self):
+        import time
         return time.time() - self.start_time < self.timetolive
 
 def connect_command(debugger, command, result, internal_dict):
@@ -78,29 +80,25 @@ def run_command(debugger, command, result, internal_dict):
 
 
 def waitfor_command(debugger, command, result, internal_dict):
-
+    import time
 
     timetolive = {time_to_live}
     detectDeadlockTimeout = {detect_deadlock_timeout}
     printBacktraceTime = time.time() + detectDeadlockTimeout if detectDeadlockTimeout > 0 else None
     process = lldb.target.process
 
-    threads = list()
-
     t0 = threading.Thread(target=setupOutput, args=(debugger, command, result, internal_dict))
     t0.deamon = True
-    threads.append(t0)
     t0.start()
 
     run_command(debugger,command, result, internal_dict)
 
-    t1 = threading.Thread(target=counter, args=(process, timetolive))
+    t1 = threading.Thread(target=counter, args=(timetolive,))
     t1.deamon = True
-    threads.append(t1)
     t1.start()
 
-    for i,t in enumerate(threads):
-        t.join()
+    t0.join()
+    t1.join()
 
     state = process.GetState()
     if state == lldb.eStateExited:
@@ -113,16 +111,18 @@ def waitfor_command(debugger, command, result, internal_dict):
         os._exit({exitcode_app_crash})
 
 
-def counter(process, timetolive):
+def counter(timetolive):
+    import time
     background = RunInBackground(timetolive=timetolive)
     while background.canContinue:
         time.sleep(1)
 
     print('Run time ended, let us leave now, nothing else to see here')
 
-    process.Stop()
+    lldb.target.process.Stop()
 
 def setupOutput(debugger, command, result, internal_dict):
+    import time
     global listener
 
     process = lldb.target.process

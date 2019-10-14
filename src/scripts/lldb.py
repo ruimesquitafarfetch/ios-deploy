@@ -6,6 +6,7 @@ import lldb
 import threading
 
 listener = None
+startup_error = lldb.SBError()
 
 class RunInBackground(object):
     def __init__(self, timetolive=5):
@@ -53,7 +54,6 @@ def connect_command(debugger, command, result, internal_dict):
 def run_command(debugger, command, result, internal_dict):
     device_app = internal_dict['fruitstrap_device_app']
     args = command.split('--',1)
-    error = lldb.SBError()
     lldb.target.modules[0].SetPlatformFileSpec(lldb.SBFileSpec(device_app))
     args_arr = []
     if len(args) > 1:
@@ -70,13 +70,19 @@ def run_command(debugger, command, result, internal_dict):
     launchInfo.SetEnvironmentEntries(['DYLD_PRINT_STATISTICS=1'], True)
     launchInfo.SetEnvironmentEntries(['DYLD_PRINT_TO_STDERR=YES'], True)
 
-    lldb.target.Launch(launchInfo, error)
+    envs_arr = []
+    if len(args) > 1:
+        envs_arr = shlex.split(args[1])
+    envs_arr = envs_arr + shlex.split('{envs}')
+    launchInfo.SetEnvironmentEntries(envs_arr, True)
+    
+    lldb.target.Launch(launchInfo, startup_error)
     lockedstr = ': Locked'
-    if lockedstr in str(error):
+    if lockedstr in str(startup_error):
        print('\\nDevice Locked\\n')
        os._exit(254)
     else:
-       print(str(error))
+       print(str(startup_error))
 
 
 def waitfor_command(debugger, command, result, internal_dict):
@@ -200,6 +206,19 @@ def safequit_command(debugger, command, result, internal_dict):
 def autoexit_command(debugger, command, result, internal_dict):
     global listener
     process = lldb.target.process
+    if not startup_error.Success():
+        print('\\nPROCESS_NOT_STARTED\\n')
+        os._exit({exitcode_app_crash})
+
+    output_path = internal_dict['fruitstrap_output_path']
+    out = None
+    if output_path:
+        out = open(output_path, 'w')
+
+    error_path = internal_dict['fruitstrap_error_path']
+    err = None
+    if error_path:
+        err = open(error_path, 'w')
 
     output_path = internal_dict['fruitstrap_output_path']
     out = None
@@ -269,6 +288,7 @@ def autoexit_command(debugger, command, result, internal_dict):
         elif printBacktraceTime is None and state == lldb.eStateStopped:
             sys.stdout.write( '\\nPROCESS_STOPPED\\n' )
             debugger.HandleCommand('bt')
+            CloseOut()
             os._exit({exitcode_app_crash})
         elif state == lldb.eStateCrashed:
             sys.stdout.write( '\\nPROCESS_CRASHED\\n' )
